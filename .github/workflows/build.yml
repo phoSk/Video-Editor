@@ -22,13 +22,11 @@ jobs:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Número de versión
         run: echo "{\"build\":${{ github.run_number }}}" > www/version.json
       - uses: actions/configure-pages@v5
-        with:
-          enablement: true
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v4
         with:
           path: www
       - id: deploy
@@ -38,12 +36,12 @@ jobs:
     name: APK de Android
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: 21
@@ -53,7 +51,11 @@ jobs:
         run: npm ci
 
       - name: Crear proyecto Android
+        shell: bash
         run: |
+          set -eo pipefail
+          trap 'tail -25 "$RUNNER_TEMP/cap.log" | sed "s/^/::error::/"' ERR
+          exec > >(tee "$RUNNER_TEMP/cap.log") 2>&1
           npx cap add android
           npx --yes @capacitor/assets@3 generate --android \
             --iconBackgroundColor '#2d4796' --iconBackgroundColorDark '#2d4796' \
@@ -83,10 +85,14 @@ jobs:
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleRelease --no-daemon
+          if ! ./gradlew assembleRelease --no-daemon > "$RUNNER_TEMP/gradle.log" 2>&1; then
+            grep -E "What went wrong|error:|e: |FAILURE|Could not|> " -A3 "$RUNNER_TEMP/gradle.log" | head -40 | sed "s/^/::error::/"
+            tail -15 "$RUNNER_TEMP/gradle.log" | sed "s/^/::error::/"
+            exit 1
+          fi
           cp app/build/outputs/apk/release/app-release.apk ../editor-video.apk
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: editor-video-apk
           path: editor-video.apk
