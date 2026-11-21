@@ -1,0 +1,101 @@
+name: Publicar app
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: publicar
+  cancel-in-progress: true
+
+jobs:
+  web:
+    name: App web (PC y navegador)
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Número de versión
+        run: echo "{\"build\":${{ github.run_number }}}" > www/version.json
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: www
+      - id: deploy
+        uses: actions/deploy-pages@v4
+
+  android:
+    name: APK de Android
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: android-actions/setup-android@v3
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Crear proyecto Android
+        run: |
+          npx cap add android
+          npx --yes @capacitor/assets@3 generate --android \
+            --iconBackgroundColor '#2d4796' --iconBackgroundColorDark '#2d4796' \
+            --splashBackgroundColor '#0e1014' --splashBackgroundColorDark '#0e1014'
+          npx cap sync android
+
+      - name: Preparar firma
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_PASSWORD" ]; then
+            echo "::error::Falta el secreto KEYSTORE_PASSWORD (Settings > Secrets and variables > Actions)."
+            exit 1
+          fi
+          echo "KEYSTORE_PATH=$GITHUB_WORKSPACE/android-release.keystore" >> "$GITHUB_ENV"
+
+      - name: Ajustar versión y firma
+        env:
+          BUILD_NUMBER: ${{ github.run_number }}
+        run: node scripts/patch-android.mjs
+
+      - name: Compilar APK
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: editorvideo
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon
+          cp app/build/outputs/apk/release/app-release.apk ../editor-video.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: editor-video-apk
+          path: editor-video.apk
+
+      - name: Publicar versión
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v${{ github.run_number }}" editor-video.apk \
+            --title "Versión 1.0.${{ github.run_number }}" \
+            --notes "Descarga editor-video.apk en tu móvil Android e instálala." \
+            --latest

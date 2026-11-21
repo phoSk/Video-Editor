@@ -1,0 +1,1185 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Editor de vídeo</title>
+<meta name="theme-color" content="#0e1014">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<style>
+:root{
+  --bg:#0e1014;--panel:#161920;--panel2:#1e222b;--line:#2a2f3a;--text:#e9ebf1;--mute:#8a91a2;
+  --acc:#5b8cff;--danger:#ff5d6c;--clip:#27314a;--aclip:#173d36;--wave:#3fd1a8;--sel:#ffd166;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--text);font:14px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+body{display:flex;flex-direction:column;min-height:100vh;user-select:none;-webkit-user-select:none;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+#updBar{display:none;background:#1f3a6b;color:#fff;padding:10px 12px;align-items:center;gap:10px;font-size:13px}
+#updBar.show{display:flex}
+button{font:inherit;color:inherit;background:var(--panel2);border:1px solid var(--line);border-radius:10px;
+  padding:8px 11px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px;touch-action:manipulation;white-space:nowrap}
+button:hover:not(:disabled){border-color:#3a4150}
+button:disabled{opacity:.35;cursor:default}
+button.primary{background:var(--acc);border-color:var(--acc);color:#fff;font-weight:600}
+button.danger{color:var(--danger)}
+button.icon{padding:8px;width:40px;height:40px}
+button.big{width:52px;height:52px;border-radius:50%;background:var(--text);color:#111;border:none}
+button[hidden]{display:none}
+svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+button.big svg{width:24px;height:24px;fill:currentColor}
+header{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--line)}
+header h1{font-size:16px;margin:0;font-weight:650;letter-spacing:.2px;flex:1}
+#stageWrap{background:#000;display:flex;justify-content:center}
+#stage{position:relative;width:100%;max-width:calc(42vh * 16 / 9);aspect-ratio:16/9;background:#000;overflow:hidden}
+.pv{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;visibility:hidden}
+.pv.on{visibility:visible}
+#empty{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;color:var(--mute);text-align:center;padding:20px}
+#empty.hide{display:none}
+#transport{display:flex;align-items:center;gap:8px;padding:10px 12px}
+#time{font-variant-numeric:tabular-nums;color:var(--mute);min-width:96px;font-size:13px}
+#time b{color:var(--text);font-weight:600}
+.grow{flex:1}
+#tlWrap{position:relative;background:var(--panel);border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+#tl{overflow-x:auto;overflow-y:hidden;scrollbar-width:none;-webkit-overflow-scrolling:touch;cursor:grab}
+#tl::-webkit-scrollbar{display:none}
+#tl.drag{cursor:grabbing}
+#track{position:relative;height:146px;transition:height .15s}
+#ruler{position:absolute;left:0;right:0;top:0;height:22px;color:var(--mute);font-size:10px}
+.tick{position:absolute;top:0;height:22px;border-left:1px solid #343a47;padding-left:4px;line-height:20px;font-variant-numeric:tabular-nums}
+#endMark{position:absolute;top:22px;bottom:0;width:0;border-left:1px dashed #4a5263}
+.clip{position:absolute;border-radius:8px;border:2px solid #0e1014;overflow:hidden;cursor:pointer;background-repeat:repeat-x}
+.vclip{top:26px;height:62px;background-color:var(--clip);background-size:auto 100%}
+.vclip::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.55),rgba(0,0,0,0) 45%,rgba(0,0,0,.35))}
+.aclip{top:94px;height:44px;background-color:var(--aclip);background-repeat:no-repeat}
+.aclip.past{opacity:.45}
+.clip.sel{border-color:var(--sel)}
+.aclip.sel{touch-action:none;cursor:ew-resize}
+.clip .lbl{position:absolute;z-index:1;left:6px;right:6px;top:3px;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 1px 2px #000}
+.badges{position:absolute;z-index:1;left:6px;bottom:4px;display:flex;gap:4px}
+.badge{font-size:11px;font-weight:700;background:var(--acc);color:#fff;border-radius:5px;padding:0 5px}
+.badge.slow{background:#e08a2b}.badge.grey{background:#555}
+#playhead{position:absolute;left:50%;top:0;bottom:0;width:2px;margin-left:-1px;background:#fff;pointer-events:none;z-index:5;box-shadow:0 0 0 1px rgba(0,0,0,.4)}
+#playhead::before{content:"";position:absolute;top:0;left:-6px;border:7px solid transparent;border-top-color:#fff}
+#panel{padding:12px;display:flex;flex-direction:column;gap:12px}
+#panel.hide{display:none}
+.row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.muted{color:var(--mute);font-size:12px}
+.clipName{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.presets button{padding:6px 10px;border-radius:8px;font-size:13px;font-variant-numeric:tabular-nums}
+.presets button.on{background:var(--acc);border-color:var(--acc);color:#fff}
+input[type=range]{flex:1;min-width:140px;accent-color:var(--acc)}
+.val{min-width:52px;text-align:right;font-weight:700;font-variant-numeric:tabular-nums}
+#hint{padding:10px 12px 16px;color:var(--mute);font-size:12px}
+#modal,#pmodal{position:fixed;inset:0;background:rgba(0,0,0,.7);display:none;align-items:center;justify-content:center;padding:16px;z-index:20}
+#modal.show,#pmodal.show{display:flex}
+.pbtn{justify-content:flex-start;text-align:left;padding:12px;flex-direction:column;align-items:flex-start;gap:2px;white-space:normal}
+.pbtn b{font-weight:600}
+.pbtn.danger b{color:var(--danger)}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;width:100%;max-width:520px;display:flex;flex-direction:column;gap:12px}
+.card h2{margin:0;font-size:16px}
+#expCanvas,#result{width:100%;max-height:40vh;background:#000;border-radius:8px;object-fit:contain;display:block}
+.bar{height:8px;background:var(--panel2);border-radius:5px;overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:var(--acc);transition:width .2s}
+select{font:inherit;color:var(--text);background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:8px}
+#toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%) translateY(20px);background:#2b3140;color:#fff;padding:10px 14px;border-radius:10px;
+  opacity:0;pointer-events:none;transition:.25s;z-index:30;max-width:90vw;text-align:center}
+#toast.show{opacity:1;transform:translateX(-50%)}
+#drop{position:fixed;inset:0;border:3px dashed var(--acc);background:rgba(91,140,255,.12);display:none;z-index:40;pointer-events:none}
+#drop.show{display:block}
+</style>
+</head>
+<body>
+<div id="updBar"><span class="grow" id="updTxt">Hay una versión nueva de la app.</span><a id="updLink" href="#" style="color:#fff;font-weight:700">Descargar</a><button id="updClose" style="padding:4px 9px">✕</button></div>
+<header>
+  <h1>Editor de vídeo</h1>
+  <button class="icon" id="projBtn" data-i="folder" title="Proyecto"></button>
+  <button id="addBtn" data-i="plus">Añadir</button>
+  <button id="expBtn" class="primary" data-i="download" disabled>Guardar</button>
+  <input id="file" type="file" accept="video/*,audio/*" multiple hidden>
+  <input id="pfile" type="file" accept=".zip,application/zip,application/x-zip-compressed" hidden>
+</header>
+
+<div id="stageWrap"><div id="stage">
+  <div id="empty">
+    <div>Añade uno o varios vídeos para empezar.<br>También puedes añadir música o audios.</div>
+    <button class="primary" id="addBtn2" data-i="plus">Añadir vídeos o audio</button>
+  </div>
+</div></div>
+
+<div id="transport">
+  <div id="time"><b>0:00.0</b> / 0:00.0</div>
+  <div class="grow"></div>
+  <button class="icon" id="undoBtn" data-i="undo" title="Deshacer (Ctrl+Z)" disabled></button>
+  <button class="icon" id="startBtn" data-i="start" title="Ir al inicio"></button>
+  <button class="big" id="playBtn" data-i="play" title="Reproducir (espacio)"></button>
+  <button class="icon" id="splitBtn" data-i="cut" title="Cortar aquí (S)" disabled></button>
+  <button class="icon" id="zoomOut" data-i="zoomout" title="Alejar"></button>
+  <button class="icon" id="zoomIn" data-i="zoomin" title="Acercar"></button>
+  <div class="grow"></div>
+</div>
+
+<div id="tlWrap">
+  <div id="tl"><div id="track"><div id="ruler"></div><div id="endMark"></div><div id="clips"></div></div></div>
+  <div id="playhead"></div>
+</div>
+
+<div id="panel" class="hide">
+  <div class="row" style="justify-content:space-between;flex-wrap:nowrap">
+    <div style="min-width:0">
+      <div class="clipName" id="cName"></div>
+      <div class="muted" id="cInfo"></div>
+    </div>
+    <div class="row" style="flex-wrap:nowrap">
+      <button class="icon" id="leftBtn" data-i="left"></button>
+      <button class="icon" id="rightBtn" data-i="right"></button>
+      <button class="icon" id="dupBtn" data-i="copy" title="Duplicar"></button>
+      <button class="icon danger" id="delBtn" data-i="trash" title="Borrar clip (Supr)"></button>
+    </div>
+  </div>
+  <div class="row">
+    <button id="linkBtn"></button>
+    <span class="muted" id="linkNote"></span>
+  </div>
+  <div class="row" id="aMoveRow">
+    <button id="toCursor">Empezar en la línea blanca</button>
+    <span class="muted">o arrastra el clip seleccionado</span>
+  </div>
+  <div>
+    <div class="row"><span class="muted">Velocidad</span><div class="grow"></div><span class="val" id="spdVal">1×</span></div>
+    <div class="row"><input id="spd" type="range" min="0.25" max="4" step="0.05" value="1"></div>
+    <div class="row presets" id="presets"></div>
+  </div>
+  <div id="volBox">
+    <div class="row"><span class="muted">Volumen</span><div class="grow"></div><span class="val" id="volVal">100 %</span></div>
+    <div class="row"><input id="vol" type="range" min="0" max="2" step="0.05" value="1"><button id="muteBtn">Silenciar</button></div>
+  </div>
+</div>
+<div id="hint">Desliza la línea de tiempo para moverte. Arriba están los vídeos y abajo el sonido. Con 🔗 el sonido va enlazado a su vídeo; desenlázalo para editarlo por separado. Toca un clip para seleccionarlo. <b>✂</b> corta todo lo que está bajo la línea blanca.</div>
+
+<div id="modal"><div class="card">
+  <h2 id="mTitle">Guardar vídeo</h2>
+  <div id="mSetup">
+    <div class="row"><span class="muted">Calidad</span><div class="grow"></div>
+      <select id="quality">
+        <option value="1080">Alta (hasta 1080p)</option>
+        <option value="720" selected>Media (720p)</option>
+        <option value="480">Ligera (480p)</option>
+      </select>
+    </div>
+    <p class="muted" style="margin:10px 0 0">El vídeo se graba reproduciéndolo, así que tarda lo mismo que dura (<span id="mDur"></span>). Mantén esta pantalla abierta mientras tanto. El audio que pase del final del vídeo se corta.</p>
+  </div>
+  <div id="mRun" hidden>
+    <canvas id="expCanvas"></canvas>
+    <div class="bar" style="margin-top:10px"><i id="prog"></i></div>
+    <div class="muted" id="progTxt" style="margin-top:6px"></div>
+  </div>
+  <div id="mDone" hidden>
+    <video id="result" controls playsinline></video>
+    <div class="muted" id="doneTxt" style="margin-top:8px"></div>
+  </div>
+  <div class="row" style="justify-content:flex-end">
+    <button id="mCancel">Cancelar</button>
+    <button id="mShare" hidden>Compartir</button>
+    <button id="mGo" class="primary" data-i="download">Empezar</button>
+  </div>
+</div></div>
+
+<div id="pmodal"><div class="card">
+  <h2>Proyecto</h2>
+  <div class="muted" id="pStatus"></div>
+  <button class="pbtn" id="pDownload"><b>Descargar proyecto (.zip)</b><span class="muted">Lleva dentro los vídeos, los audios y toda la edición. Ábrelo aquí otro día o en otro dispositivo.</span></button>
+  <button class="pbtn" id="pOpen"><b>Abrir proyecto (.zip)</b><span class="muted">Sustituye lo que tienes ahora por el proyecto del archivo.</span></button>
+  <button class="pbtn danger" id="pNew"><b>Nuevo proyecto</b><span class="muted">Vacía la línea de tiempo y borra el guardado de este navegador.</span></button>
+  <div class="muted" id="pProg"></div>
+  <div class="row" style="justify-content:flex-end"><button id="pClose">Cerrar</button></div>
+</div></div>
+
+<div id="toast"></div>
+<div id="drop"></div>
+
+<script>
+(() => {
+const $ = s => document.querySelector(s);
+const ICONS = {
+  play:'<polygon points="7 4 20 12 7 20 7 4"/>',
+  pause:'<rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/>',
+  cut:'<circle cx="6" cy="6" r="3"/><path d="M8.12 8.12 12 12"/><path d="M20 4 8.12 15.88"/><circle cx="6" cy="18" r="3"/><path d="M14.8 14.8 20 20"/>',
+  trash:'<path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
+  undo:'<path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/>',
+  plus:'<path d="M5 12h14"/><path d="M12 5v14"/>',
+  download:'<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/>',
+  left:'<path d="m15 18-6-6 6-6"/>', right:'<path d="m9 18 6-6-6-6"/>',
+  copy:'<rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>',
+  zoomin:'<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/><path d="M8 11h6"/><path d="M11 8v6"/>',
+  zoomout:'<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/><path d="M8 11h6"/>',
+  start:'<path d="M19 20 9 12l10-8z"/><path d="M5 19V5"/>',
+  folder:'<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>'
+};
+const svg = n => `<svg viewBox="0 0 24 24">${ICONS[n]}</svg>`;
+document.querySelectorAll('[data-i]').forEach(b => b.insertAdjacentHTML('afterbegin', svg(b.dataset.i)));
+const setIcon = (b, n) => { b.querySelector('svg').outerHTML = svg(n); };
+
+// clips: pista de vídeo (seguidos). aclips: pista de audio (posición libre, campo "at").
+const S = { sources:new Map(), clips:[], aclips:[], sel:null, t:0, pps:40, playing:false };
+let uid = 1;
+const undoStack = [];
+
+/* ---------- utilidades ---------- */
+const fmt = t => { t = Math.max(0, t || 0); const m = Math.floor(t/60), s = t - m*60; return m + ':' + (s < 10 ? '0' : '') + s.toFixed(1); };
+const fmtTick = t => { const m = Math.floor(t/60), s = Math.round(t - m*60); return m + ':' + (s < 10 ? '0' : '') + s; };
+const esc = s => String(s).replace(/[<&"]/g, c => ({ '<':'&lt;', '&':'&amp;', '"':'&quot;' }[c]));
+const clipDur = c => (c.out - c.in) / c.speed;
+const starts = () => { let a = 0; return S.clips.map(c => { const s = a; a += clipDur(c); return s; }); };
+const total = () => S.clips.reduce((a, c) => a + clipDur(c), 0);
+const audioEnd = () => S.aclips.reduce((a, c) => Math.max(a, c.at + clipDur(c)), 0);
+function findSel(){
+  let i = S.clips.findIndex(c => c.id === S.sel); if (i >= 0) return { kind:'v', i, c:S.clips[i], arr:S.clips };
+  i = S.aclips.findIndex(c => c.id === S.sel); if (i >= 0) return { kind:'a', i, c:S.aclips[i], arr:S.aclips };
+  return null;
+}
+function locate(t){
+  const st = starts();
+  for (let i = 0; i < S.clips.length; i++){
+    const c = S.clips[i], d = clipDur(c);
+    if (t < st[i] + d || i === S.clips.length - 1){
+      const local = Math.max(0, Math.min(d, t - st[i]));
+      return { i, c, start: st[i], local, srcT: c.in + local * c.speed };
+    }
+  }
+  return null;
+}
+let toastT;
+function toast(msg){ const el = $('#toast'); el.textContent = msg; el.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove('show'), 2600); }
+function waitEvent(el, ev, ms = 4000){
+  return new Promise(res => { let done = false; const f = () => { if (done) return; done = true; el.removeEventListener(ev, f); res(); };
+    el.addEventListener(ev, f); setTimeout(f, ms); });
+}
+function snapshot(){ undoStack.push(JSON.stringify({ clips: S.clips, aclips: S.aclips, sel: S.sel })); if (undoStack.length > 60) undoStack.shift(); }
+function undo(){ if (!undoStack.length) return; pause(); const s = JSON.parse(undoStack.pop()); S.clips = s.clips; S.aclips = s.aclips; S.sel = s.sel; afterEdit(); }
+
+/* ---------- audio ---------- */
+let actx = null, speaker = null, recDest = null;
+const aEls = new Map(); // id de clip de audio -> { el, gain, unlocked }
+function ensureAudio(){
+  if (!actx){
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      actx = new AC(); speaker = actx.createGain(); speaker.connect(actx.destination);
+      recDest = actx.createMediaStreamDestination();
+      aEls.forEach(connectEl);
+    } catch (e) { actx = null; }
+  }
+  if (actx && actx.state === 'suspended') actx.resume().catch(() => {});
+}
+function connectEl(a){
+  if (!actx || a.gain) return;
+  try { const n = actx.createMediaElementSource(a.el); a.gain = actx.createGain(); n.connect(a.gain); a.gain.connect(speaker); a.gain.connect(recDest); } catch (e) {}
+}
+function getAEl(c){
+  let a = aEls.get(c.id);
+  if (!a){
+    const s = S.sources.get(c.src);
+    const el = new Audio(); el.preload = 'auto'; el.src = s ? s.url : '';
+    try { el.preservesPitch = true; el.webkitPreservesPitch = true; } catch (e) {}
+    a = { el, gain: null, unlocked: false }; aEls.set(c.id, a); connectEl(a);
+  }
+  return a;
+}
+function pauseAudio(){ aEls.forEach(a => { if (!a.el.paused) a.el.pause(); }); }
+function syncAudio(t, run){
+  const T = total();
+  const live = new Set();
+  for (const c of S.aclips){
+    const d = clipDur(c);
+    if (!(run && t >= c.at && t < Math.min(c.at + d, T) - 0.01)) continue;
+    live.add(c.id);
+    const a = getAEl(c), el = a.el, vol = c.vol == null ? 1 : c.vol;
+    if (a.gain) a.gain.gain.value = vol; else el.volume = Math.min(1, vol);
+    if (el.playbackRate !== c.speed) el.playbackRate = c.speed;
+    const want = c.in + (t - c.at) * c.speed;
+    if (el.paused){ el.currentTime = want; const p = el.play(); if (p && p.catch) p.catch(() => {}); }
+    else if (!el.seeking && Math.abs(el.currentTime - want) > 0.25) el.currentTime = want;
+  }
+  aEls.forEach((a, id) => { if (!live.has(id) && !a.el.paused) a.el.pause(); });
+}
+// iOS: cada elemento multimedia hay que "desbloquearlo" dentro de un toque
+function unlockAll(){
+  S.sources.forEach(s => { if (!s.v || s.unlocked) return; s.unlocked = true;
+    if (s === activeSrc) return; const p = s.v.play(); if (p && p.catch) p.catch(() => {}); s.v.pause(); });
+  S.aclips.forEach(c => { const a = getAEl(c); if (a.unlocked) return; a.unlocked = true;
+    const p = a.el.play(); if (p && p.catch) p.catch(() => {}); a.el.pause(); });
+}
+
+/* ---------- carga ---------- */
+const isAudioFile = f => f.type.startsWith('audio/') || /\.(mp3|m4a|aac|wav|ogg|oga|opus|flac)$/i.test(f.name);
+const isVideoFile = f => f.type.startsWith('video/') || /\.(mp4|mov|m4v|webm|mkv|3gp)$/i.test(f.name);
+function loadVideoSource(file, fixedId){
+  return new Promise((res, rej) => {
+    const url = URL.createObjectURL(file);
+    const v = document.createElement('video');
+    v.playsInline = true; v.setAttribute('playsinline', ''); v.muted = true; v.defaultMuted = true; v.preload = 'auto'; v.className = 'pv';
+    v.src = url + '#t=0.001';
+    $('#stage').appendChild(v);
+    v.addEventListener('seeked', () => { if (v._pending != null){ const p = v._pending; v._pending = null; v.currentTime = p; } });
+    v.onerror = () => { v.remove(); rej(new Error('load')); };
+    v.onloadedmetadata = async () => {
+      let d = v.duration;
+      if (!isFinite(d)){ v.currentTime = 1e9; await waitEvent(v, 'seeked', 3000); d = v.duration; v.currentTime = 0; }
+      if (!isFinite(d) || d <= 0){ v.remove(); rej(new Error('dur')); return; }
+      const s = { id: fixedId || 's' + (uid++), kind: 'video', name: file.name, url, v, file, duration: d, w: v.videoWidth, h: v.videoHeight };
+      S.sources.set(s.id, s); makeThumb(s); res(s);
+    };
+  });
+}
+function loadAudioSource(file, fixedId){
+  return new Promise((res, rej) => {
+    const url = URL.createObjectURL(file); const a = new Audio(); a.preload = 'metadata'; a.src = url;
+    a.onerror = () => rej(new Error('load'));
+    a.onloadedmetadata = () => {
+      const d = a.duration; if (!isFinite(d) || d <= 0){ rej(new Error('dur')); return; }
+      const s = { id: fixedId || 's' + (uid++), kind: 'audio', name: file.name, url, file, duration: d };
+      S.sources.set(s.id, s); res(s);
+    };
+  });
+}
+async function makeThumb(s){
+  const v = s.v;
+  if (v.readyState < 2) await waitEvent(v, 'loadeddata', 3000);
+  try {
+    const c = document.createElement('canvas'); const h = 62, w = Math.round(h * (s.w / s.h || 16/9));
+    c.width = w; c.height = h; c.getContext('2d').drawImage(v, 0, 0, w, h);
+    s.thumb = c.toDataURL('image/jpeg', .7); renderClips();
+  } catch (e) {}
+}
+// forma de onda (y de paso averigua si el vídeo tiene sonido)
+async function makeWave(s, file, prune = true){
+  if (file.size > 250e6) return;
+  try {
+    const buf = await file.arrayBuffer();
+    const OAC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+    const oc = new OAC(1, 2, 44100);
+    const ab = await new Promise((res, rej) => { const p = oc.decodeAudioData(buf, res, rej); if (p && p.then) p.then(res, rej); });
+    const ch = ab.getChannelData(0), N = Math.max(200, Math.min(6000, Math.round(ab.duration * 25))), H = 40;
+    const cv = document.createElement('canvas'); cv.width = N; cv.height = H; const g = cv.getContext('2d');
+    const step = Math.max(1, Math.floor(ch.length / N)); let max = 0.0001; const peaks = new Float32Array(N);
+    for (let i = 0; i < N; i++){ let m = 0; const o = i * step; for (let j = 0; j < step; j += 4){ const x = Math.abs(ch[o + j] || 0); if (x > m) m = x; } peaks[i] = m; if (m > max) max = m; }
+    g.fillStyle = '#3fd1a8';
+    for (let i = 0; i < N; i++){ const h = Math.max(1, (peaks[i] / max) * (H - 4)); g.fillRect(i, (H - h) / 2, 1, h); }
+    s.wave = cv.toDataURL('image/png'); renderClips();
+  } catch (e) {
+    if (s.kind === 'video' && prune){ // sin pista de sonido
+      S.aclips = S.aclips.filter(c => c.src !== s.id);
+      if (!findSel()) S.sel = S.clips.length ? S.clips[0].id : null;
+      renderClips(); renderPanel();
+    }
+  }
+}
+async function addFiles(list){
+  const files = [...list].filter(f => isVideoFile(f) || isAudioFile(f));
+  if (!files.length){ toast('Eso no parece un vídeo ni un audio'); return; }
+  pause(); snapshot();
+  const wasEmpty = !S.clips.length;
+  let added = 0, audioAt = S.t;
+  for (const f of files){
+    try {
+      if (isAudioFile(f) && !isVideoFile(f)){
+        const s = await loadAudioSource(f);
+        const c = { id: uid++, src: s.id, in: 0, out: s.duration, speed: 1, vol: 1, at: audioAt };
+        audioAt += s.duration; S.aclips.push(c); S.sel = c.id; added++; makeWave(s, f);
+      } else {
+        const at = total();
+        const s = await loadVideoSource(f);
+        const c = { id: uid++, src: s.id, in: 0, out: s.duration, speed: 1 };
+        S.clips.push(c);
+        S.aclips.push({ id: uid++, src: s.id, in: 0, out: s.duration, speed: 1, vol: 1, at, link: c.id, off: 0 });
+        if (!S.sel) S.sel = c.id; added++; makeWave(s, f);
+      }
+    } catch (e) { toast('No se pudo abrir ' + f.name); }
+  }
+  if (!added){ undoStack.pop(); return; }
+  if (wasEmpty) fitZoom();
+  afterEdit();
+}
+
+/* ---------- vista previa ---------- */
+let activeSrc = null;
+function setActive(s){
+  if (activeSrc === s) return;
+  if (activeSrc){ activeSrc.v.classList.remove('on'); activeSrc.v.pause(); }
+  activeSrc = s; if (s) s.v.classList.add('on');
+}
+function seekTo(v, time){ if (v.seeking){ v._pending = time; return; } v.currentTime = time; }
+function showFrame(t){
+  const L = locate(t); if (!L){ setActive(null); return; }
+  const s = S.sources.get(L.c.src); setActive(s); seekTo(s.v, L.srcT);
+}
+
+/* ---------- reproducción ---------- */
+let playToken = 0, curIdx = -1, transitioning = false, exp = null;
+function play(){
+  if (!S.clips.length){ toast('Añade al menos un vídeo'); return; }
+  ensureAudio();
+  if (S.t >= total() - 0.02) S.t = 0;
+  const L = locate(S.t);
+  setActive(S.sources.get(L.c.src));
+  unlockAll();
+  S.playing = true; updatePlayBtn();
+  const tok = ++playToken;
+  startClip(L.i, L.srcT, tok);
+  requestAnimationFrame(loop);
+}
+function pause(){
+  S.playing = false; playToken++; transitioning = false;
+  if (activeSrc) activeSrc.v.pause();
+  pauseAudio(); updatePlayBtn();
+}
+async function startClip(i, srcT, tok){
+  transitioning = true; curIdx = i; pauseAudio();
+  const c = S.clips[i], s = S.sources.get(c.src), v = s.v;
+  setActive(s);
+  v.playbackRate = c.speed;
+  if (Math.abs(v.currentTime - srcT) > 0.06){
+    if (exp && exp.rec.state === 'recording') try { exp.rec.pause(); } catch (e) {}
+    v._pending = null; v.currentTime = srcT; await waitEvent(v, 'seeked');
+  }
+  if (tok !== playToken) return;
+  try { await v.play(); }
+  catch (e) { if (tok === playToken){ pause(); toast('No se pudo reproducir el vídeo'); if (exp) exp.finish(); } return; }
+  if (tok !== playToken){ v.pause(); return; }
+  v.playbackRate = c.speed;
+  if (exp){ try { if (exp.rec.state === 'inactive') exp.rec.start(1000); else if (exp.rec.state === 'paused') exp.rec.resume(); } catch (e) {} }
+  transitioning = false;
+}
+function advance(){
+  const c = S.clips[curIdx], next = S.clips[curIdx + 1], v = activeSrc.v;
+  if (!next){
+    v.pause(); S.t = total(); S.playing = false; playToken++; pauseAudio(); updatePlayBtn();
+    if (exp) exp.finish();
+    return;
+  }
+  if (next.src === c.src && Math.abs(next.in - v.currentTime) < 0.12){ curIdx++; v.playbackRate = next.speed; return; }
+  v.pause();
+  startClip(curIdx + 1, next.in, playToken);
+}
+function loop(){
+  if (exp) drawExport();
+  if (!S.playing){ pauseAudio(); return; }
+  const c = S.clips[curIdx];
+  if (c && activeSrc && !transitioning && !activeSrc.v.seeking){
+    const v = activeSrc.v;
+    S.t = starts()[curIdx] + Math.max(0, (v.currentTime - c.in) / c.speed);
+    if (v.currentTime >= c.out - 0.03 || v.ended) advance();
+  }
+  syncAudio(S.t, S.playing && !transitioning);
+  updatePlayhead();
+  if (exp) updateProgress();
+  requestAnimationFrame(loop);
+}
+
+/* ---------- línea de tiempo ---------- */
+const tl = $('#tl'), track = $('#track');
+let lastProg = -1;
+function fitZoom(){ const T = Math.max(total(), audioEnd()); if (T > 0) S.pps = Math.max(2, Math.min(200, tl.clientWidth * 0.8 / T)); }
+function renderRuler(){
+  const W = tl.clientWidth, T = Math.max(total(), audioEnd()), half = W / 2;
+  const steps = [0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 1200];
+  const step = steps.find(s => s * S.pps >= 64) || 1200;
+  let h = '';
+  for (let t = 0; t <= T + 0.001; t += step) h += `<div class="tick" style="left:${half + t * S.pps}px">${fmtTick(t)}</div>`;
+  $('#ruler').innerHTML = h;
+  $('#endMark').style.left = (half + total() * S.pps) + 'px';
+}
+function badges(c){
+  let b = '';
+  if (c.link != null || (c.at == null && linkedTo(c.id).length)) b += `<span class="badge grey" title="Enlazado">🔗</span>`;
+  if (c.speed !== 1) b += `<span class="badge ${c.speed < 1 ? 'slow' : ''}">${+c.speed.toFixed(2)}×</span>`;
+  if (c.vol === 0) b += `<span class="badge grey">🔇</span>`;
+  else if (c.vol != null && c.vol !== 1) b += `<span class="badge grey">${Math.round(c.vol * 100)}%</span>`;
+  return b ? `<span class="badges">${b}</span>` : '';
+}
+function renderClips(){
+  const W = tl.clientWidth, half = W / 2, st = starts(), T = total();
+  const end = Math.max(T, audioEnd());
+  track.style.width = (W + end * S.pps) + 'px';
+  let h = S.clips.map((c, i) => {
+    const s = S.sources.get(c.src), w = Math.max(4, clipDur(c) * S.pps);
+    const bg = s && s.thumb ? `background-image:url(${s.thumb});` : '';
+    return `<div class="clip vclip ${c.id === S.sel ? 'sel' : ''}" data-id="${c.id}" style="left:${half + st[i] * S.pps}px;width:${w}px;${bg}">
+      <span class="lbl">${esc(s ? s.name : '')}</span>${badges(c)}</div>`;
+  }).join('');
+  // filas de audio: si dos se solapan, uno baja a otra fila
+  const lane = new Map(), ends = [];
+  [...S.aclips].sort((a, b) => a.at - b.at).forEach(c => {
+    let l = ends.findIndex(e => e <= c.at + 0.001); if (l < 0){ l = ends.length; ends.push(0); }
+    ends[l] = c.at + clipDur(c); lane.set(c.id, l);
+  });
+  track.style.height = (94 + Math.max(1, ends.length) * 48 + 4) + 'px';
+  h += S.aclips.map(c => {
+    const s = S.sources.get(c.src), w = Math.max(4, clipDur(c) * S.pps);
+    let bg = '';
+    if (s && s.wave){ const full = s.duration * S.pps / c.speed; bg = `background-image:url(${s.wave});background-size:${full}px 100%;background-position:${-c.in * S.pps / c.speed}px 0;`; }
+    const past = c.at >= T ? 'past' : '';
+    return `<div class="clip aclip ${past} ${c.id === S.sel ? 'sel' : ''}" data-id="${c.id}" style="left:${half + c.at * S.pps}px;top:${94 + lane.get(c.id) * 48}px;width:${w}px;${bg}">
+      <span class="lbl">♪ ${esc(s ? s.name : '')}</span>${badges(c)}</div>`;
+  }).join('');
+  $('#clips').innerHTML = h;
+  renderRuler();
+  scheduleSave();
+}
+function canSplit(){
+  const t = S.t;
+  const L = S.clips.length ? locate(t) : null;
+  if (L && L.local > 0.05 && L.local < clipDur(L.c) - 0.05) return true;
+  return S.aclips.some(c => t - c.at > 0.05 && t - c.at < clipDur(c) - 0.05);
+}
+function updatePlayhead(){
+  const x = Math.round(S.t * S.pps);
+  if (Math.abs(tl.scrollLeft - x) >= 1){ tl.scrollLeft = x; lastProg = tl.scrollLeft; }
+  $('#time').innerHTML = `<b>${fmt(S.t)}</b> / ${fmt(total())}`;
+  $('#splitBtn').disabled = !canSplit();
+}
+let scrubRaf = 0;
+tl.addEventListener('scroll', () => {
+  if (Math.abs(tl.scrollLeft - lastProg) < 1.5) return;
+  if (exp || aDrag) return;
+  if (S.playing) pause();
+  S.t = Math.max(0, Math.min(Math.max(total(), audioEnd()), tl.scrollLeft / S.pps));
+  if (!scrubRaf) scrubRaf = requestAnimationFrame(() => { scrubRaf = 0; showFrame(Math.min(S.t, total())); updatePlayhead(); });
+}, { passive: true });
+tl.addEventListener('wheel', e => {
+  if (e.ctrlKey){ e.preventDefault(); zoom(e.deltaY < 0 ? 1.15 : 1/1.15); return; }
+  if (Math.abs(e.deltaY) > Math.abs(e.deltaX)){ e.preventDefault(); tl.scrollLeft += e.deltaY; }
+}, { passive: false });
+
+// arrastrar: clip de audio seleccionado = moverlo; resto con ratón = desplazar la línea
+let drag = null, aDrag = null;
+tl.addEventListener('pointerdown', e => {
+  const el = e.target.closest('.aclip.sel');
+  if (el){
+    const c = S.aclips.find(x => x.id === +el.dataset.id); if (!c) return;
+    e.preventDefault(); pause();
+    aDrag = { c, x: e.clientX, at0: c.at, moved: false, el, snapped: false };
+    try { el.setPointerCapture(e.pointerId); } catch (er) {}
+    return;
+  }
+  if (e.pointerType !== 'mouse' || e.button !== 0) return;
+  drag = { x: e.clientX, sl: tl.scrollLeft, moved: false };
+});
+function snapPoints(skip){
+  const pts = [0, S.t, total(), ...starts()];
+  S.aclips.forEach(c => { if (c !== skip){ pts.push(c.at, c.at + clipDur(c)); } });
+  return pts;
+}
+window.addEventListener('pointermove', e => {
+  if (aDrag){
+    const dx = e.clientX - aDrag.x; if (!aDrag.moved && Math.abs(dx) < 3) return;
+    if (!aDrag.moved){ aDrag.moved = true; snapshot(); }
+    const c = aDrag.c, d = clipDur(c); let at = Math.max(0, aDrag.at0 + dx / S.pps);
+    const tol = 10 / S.pps;
+    for (const p of snapPoints(c)){
+      if (Math.abs(at - p) < tol){ at = p; break; }
+      if (Math.abs(at + d - p) < tol){ at = p - d; break; }
+    }
+    setAt(c, at);
+    aDrag.el.style.left = (tl.clientWidth / 2 + c.at * S.pps) + 'px';
+    return;
+  }
+  if (!drag) return; const dx = e.clientX - drag.x;
+  if (Math.abs(dx) > 3){ drag.moved = true; tl.classList.add('drag'); }
+  if (drag.moved) tl.scrollLeft = drag.sl - dx;
+});
+window.addEventListener('pointerup', () => {
+  if (aDrag){ const moved = aDrag.moved; aDrag = null; if (moved){ renderClips(); renderPanel(); updateButtons(); updatePlayhead(); } suppressClick = moved; setTimeout(() => suppressClick = false, 0); return; }
+  if (drag){ suppressClick = drag.moved; drag = null; tl.classList.remove('drag'); setTimeout(() => suppressClick = false, 0); }
+});
+let suppressClick = false;
+$('#clips').addEventListener('click', e => {
+  if (suppressClick) return;
+  const el = e.target.closest('.clip'); if (!el) return;
+  S.sel = +el.dataset.id; renderClips(); renderPanel();
+});
+function zoom(f){ S.pps = Math.max(2, Math.min(400, S.pps * f)); renderClips(); updatePlayhead(); }
+
+/* ---------- edición ---------- */
+const startOf = id => { const st = starts(), i = S.clips.findIndex(c => c.id === id); return i < 0 ? null : st[i]; };
+function setAt(c, at){ c.at = Math.max(0, at); if (c.link != null){ const st = startOf(c.link); if (st == null) delete c.link; else c.off = c.at - st; } }
+function applyLinks(){
+  S.aclips.forEach(c => { if (c.link == null) return; const st = startOf(c.link);
+    if (st == null){ delete c.link; delete c.off; return; } c.at = Math.max(0, st + (c.off || 0)); });
+}
+const linkedTo = vid => S.aclips.filter(a => a.link === vid);
+function afterEdit(){
+  applyLinks();
+  S.t = Math.max(0, Math.min(S.t, Math.max(total(), audioEnd())));
+  if (!findSel()) S.sel = S.clips.length ? S.clips[Math.min(S.clips.length - 1, locate(Math.min(S.t, total()))?.i ?? 0)].id : (S.aclips[0]?.id ?? null);
+  renderClips(); renderPanel(); updatePlayhead(); updateButtons();
+  if (!S.playing){ if (S.clips.length) showFrame(Math.min(S.t, total())); else setActive(null); }
+}
+function split(){
+  if (!canSplit()) return;
+  pause(); snapshot();
+  const t = S.t; let newSel = null, vsplit = null;
+  const L = S.clips.length ? locate(t) : null;
+  if (L && L.local > 0.05 && L.local < clipDur(L.c) - 0.05){
+    const a = { ...L.c, out: L.srcT }, b = { ...L.c, id: uid++, in: L.srcT };
+    S.clips.splice(L.i, 1, a, b); if (S.sel === L.c.id) newSel = b.id;
+    vsplit = { old: a.id, b: b.id };
+  }
+  for (let i = S.aclips.length - 1; i >= 0; i--){
+    const c = S.aclips[i], local = t - c.at;
+    if (local > 0.05 && local < clipDur(c) - 0.05){
+      const srcT = c.in + local * c.speed;
+      const a = { ...c, out: srcT }, b = { ...c, id: uid++, in: srcT, at: t };
+      S.aclips.splice(i, 1, a, b); if (S.sel === c.id) newSel = b.id;
+    }
+  }
+  // los trozos enlazados que quedan a la derecha del corte pasan al nuevo clip de vídeo
+  if (vsplit) S.aclips.forEach(c => { if (c.link === vsplit.old && c.at >= t - 0.001){ c.link = vsplit.b; } });
+  S.aclips.forEach(c => { if (c.link != null) setAt(c, c.at); });
+  if (newSel) S.sel = newSel;
+  afterEdit(); toast('Cortado');
+}
+function delClip(){
+  const f = findSel(); if (!f) return;
+  pause(); snapshot();
+  f.arr.splice(f.i, 1);
+  if (f.kind === 'v') S.aclips = S.aclips.filter(a => a.link !== f.c.id);
+  if (f.kind === 'v'){ S.t = Math.min(f.i < S.clips.length ? starts()[f.i] : total(), total()); S.sel = S.clips.length ? S.clips[Math.min(f.i, S.clips.length - 1)].id : null; }
+  else S.sel = null;
+  afterEdit();
+}
+function moveClip(d){
+  const f = findSel(); if (!f) return;
+  pause(); snapshot();
+  if (f.kind === 'v'){
+    const j = f.i + d; if (j < 0 || j >= S.clips.length){ undoStack.pop(); return; }
+    [S.clips[f.i], S.clips[j]] = [S.clips[j], S.clips[f.i]]; S.t = starts()[j];
+  } else {
+    setAt(f.c, Math.round((f.c.at + d * 0.1) * 1000) / 1000);
+  }
+  afterEdit();
+}
+function dupClip(){
+  const f = findSel(); if (!f) return;
+  pause(); snapshot();
+  const c = { ...f.c, id: uid++ };
+  if (f.kind === 'v'){
+    S.clips.splice(f.i + 1, 0, c); S.t = starts()[f.i + 1];
+    linkedTo(f.c.id).forEach(a => S.aclips.push({ ...a, id: uid++, link: c.id }));
+  } else { delete c.link; delete c.off; c.at = f.c.at + clipDur(f.c); S.aclips.splice(f.i + 1, 0, c); }
+  S.sel = c.id; afterEdit();
+}
+function toggleLink(){
+  const f = findSel(); if (!f) return;
+  pause();
+  if (f.kind === 'v'){
+    const ls = linkedTo(f.c.id);
+    if (ls.length){ snapshot(); ls.forEach(a => { delete a.link; delete a.off; }); afterEdit(); toast('Audio desenlazado'); return; }
+    const st = startOf(f.c.id), en = st + clipDur(f.c);
+    const cand = S.aclips.filter(a => a.link == null && a.at < en - 0.01 && a.at + clipDur(a) > st + 0.01);
+    const same = cand.filter(a => a.src === f.c.src), pickA = same.length ? same : cand;
+    if (!pickA.length){ toast('No hay audio debajo de este clip para enlazar'); return; }
+    snapshot(); pickA.forEach(a => { a.link = f.c.id; a.off = a.at - st; }); afterEdit(); toast('Audio enlazado');
+  } else {
+    if (f.c.link != null){ snapshot(); delete f.c.link; delete f.c.off; afterEdit(); toast('Audio desenlazado'); return; }
+    if (!S.clips.length){ toast('No hay vídeo para enlazar'); return; }
+    const L = locate(Math.min(f.c.at, total() - 0.001));
+    snapshot(); f.c.link = L.c.id; f.c.off = f.c.at - L.start; afterEdit(); toast('Enlazado al clip ' + (L.i + 1));
+  }
+}
+function toCursor(){
+  const f = findSel(); if (!f || f.kind !== 'a') return;
+  pause(); snapshot(); setAt(f.c, S.t); afterEdit();
+}
+let spdSnap = false;
+function setSpeed(v, commit){
+  const f = findSel(); if (!f) return;
+  if (!spdSnap){ snapshot(); spdSnap = true; }
+  const c = f.c;
+  if (f.kind === 'v'){
+    const L = locate(S.t), inThis = L && L.i === f.i, srcT = inThis ? L.srcT : null;
+    c.speed = Math.max(0.25, Math.min(4, Math.round(v * 100) / 100));
+    if (inThis) S.t = starts()[f.i] + (srcT - c.in) / c.speed;
+    if (S.playing && curIdx === f.i && activeSrc) activeSrc.v.playbackRate = c.speed;
+    linkedTo(c.id).forEach(a => { a.speed = c.speed; });
+    applyLinks();
+  } else {
+    c.speed = Math.max(0.25, Math.min(4, Math.round(v * 100) / 100));
+  }
+  renderClips(); renderPanel(true); updatePlayhead(); updateButtons();
+  if (commit) spdSnap = false;
+}
+let volSnap = false;
+function setVol(v, commit){
+  const f = findSel(); if (!f || f.kind !== 'a') return;
+  if (!volSnap){ snapshot(); volSnap = true; }
+  f.c.vol = Math.max(0, Math.min(2, Math.round(v * 100) / 100));
+  renderClips(); renderPanel(true); updateButtons();
+  if (commit) volSnap = false;
+}
+const PRESETS = [0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4];
+$('#presets').innerHTML = PRESETS.map(p => `<button data-s="${p}">${p}×</button>`).join('');
+$('#presets').addEventListener('click', e => { const b = e.target.closest('button'); if (b){ spdSnap = false; setSpeed(+b.dataset.s, true); } });
+$('#spd').addEventListener('input', e => setSpeed(+e.target.value, false));
+$('#spd').addEventListener('change', () => { spdSnap = false; });
+$('#vol').addEventListener('input', e => setVol(+e.target.value, false));
+$('#vol').addEventListener('change', () => { volSnap = false; });
+$('#muteBtn').onclick = () => { const f = findSel(); if (!f || f.kind !== 'a') return; volSnap = false;
+  if ((f.c.vol ?? 1) > 0){ f.c._prevVol = f.c.vol ?? 1; setVol(0, true); } else setVol(f.c._prevVol || 1, true); };
+
+function renderPanel(keepSlider){
+  const f = findSel(), p = $('#panel');
+  if (!f){ p.classList.add('hide'); return; }
+  p.classList.remove('hide');
+  const c = f.c, s = S.sources.get(c.src), isA = f.kind === 'a';
+  $('#cName').textContent = isA ? `Audio · ${s ? s.name : ''}` : `Clip ${f.i + 1} · ${s ? s.name : ''}`;
+  $('#cInfo').textContent = isA
+    ? `Empieza en ${fmt(c.at)} · dura ${fmt(clipDur(c))}`
+    : `Tramo ${fmt(c.in)}–${fmt(c.out)} del original · dura ${fmt(clipDur(c))}`;
+  $('#spdVal').textContent = (+c.speed.toFixed(2)) + '×';
+  if (!keepSlider){ $('#spd').value = c.speed; if (isA) $('#vol').value = c.vol ?? 1; }
+  document.querySelectorAll('#presets button').forEach(b => b.classList.toggle('on', Math.abs(+b.dataset.s - c.speed) < 0.001));
+  $('#volBox').hidden = !isA; $('#aMoveRow').hidden = !isA;
+  const linked = isA ? c.link != null : linkedTo(c.id).length > 0;
+  $('#linkBtn').textContent = linked ? '🔗 Desenlazar audio' : '🔗 Enlazar audio';
+  $('#linkNote').textContent = linked
+    ? (isA ? 'Se mueve con su vídeo' : 'Su audio se mueve, se borra y cambia de velocidad con él')
+    : (isA ? 'Va por libre' : 'El audio va por libre');
+  if (isA){
+    const vol = c.vol ?? 1;
+    $('#volVal').textContent = vol === 0 ? 'Silenciado' : Math.round(vol * 100) + ' %';
+    $('#muteBtn').textContent = vol === 0 ? 'Activar' : 'Silenciar';
+    $('#leftBtn').title = 'Mover 0,1 s antes'; $('#rightBtn').title = 'Mover 0,1 s después';
+    $('#leftBtn').disabled = c.at <= 0; $('#rightBtn').disabled = false;
+  } else {
+    $('#leftBtn').title = 'Mover a la izquierda'; $('#rightBtn').title = 'Mover a la derecha';
+    $('#leftBtn').disabled = f.i === 0; $('#rightBtn').disabled = f.i === S.clips.length - 1;
+  }
+}
+function updateButtons(){
+  $('#undoBtn').disabled = !undoStack.length;
+  $('#expBtn').disabled = !S.clips.length;
+  $('#empty').classList.toggle('hide', S.clips.length > 0 || S.aclips.length > 0 || restoring);
+}
+function updatePlayBtn(){ setIcon($('#playBtn'), S.playing ? 'pause' : 'play'); }
+
+/* ---------- exportar ---------- */
+function pickMime(){
+  if (!window.MediaRecorder) return null;
+  const c = ['video/mp4;codecs=avc1.42E01F,mp4a.40.2', 'video/mp4;codecs=avc1,mp4a.40.2', 'video/mp4',
+             'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'];
+  return c.find(m => { try { return MediaRecorder.isTypeSupported(m); } catch (e) { return false; } }) || '';
+}
+let lastBlob = null, lastExt = 'webm';
+function modalStep(step){
+  $('#mSetup').hidden = step !== 'setup'; $('#mRun').hidden = step !== 'run'; $('#mDone').hidden = step !== 'done';
+  $('#mGo').hidden = step === 'run';
+  $('#mTitle').textContent = step === 'run' ? 'Grabando el vídeo…' : step === 'done' ? 'Vídeo listo' : 'Guardar vídeo';
+  $('#mGo').lastChild.textContent = step === 'done' ? 'Guardar' : 'Empezar';
+  $('#mCancel').textContent = step === 'done' ? 'Cerrar' : 'Cancelar';
+}
+function openExport(){
+  if (!S.clips.length) return;
+  pause();
+  $('#mDur').textContent = fmt(total());
+  modalStep('setup'); $('#modal').classList.add('show');
+}
+$('#mShare').onclick = async () => { if (!lastBlob) return; try { await nativeShare(lastBlob, lastVideoName || `video.${lastExt}`); } catch (e) {} };
+function closeModal(){
+  if (exp){ exp.cancelled = true; exp.finish(); return; }
+  $('#modal').classList.remove('show'); $('#result').pause();
+}
+async function runExport(){
+  const mime = pickMime();
+  if (mime === null){ toast('Este navegador no permite grabar vídeo'); return; }
+  ensureAudio();
+  const L0 = S.clips[0]; setActive(S.sources.get(L0.src)); unlockAll();
+  const first = S.sources.get(L0.src), target = +$('#quality').value;
+  let w = first.w || 1280, h = first.h || 720;
+  const sc = Math.min(1, target / Math.min(w, h)); w = Math.round(w * sc / 2) * 2; h = Math.round(h * sc / 2) * 2;
+  const cv = $('#expCanvas'); cv.width = w; cv.height = h;
+  const g = cv.getContext('2d'); g.fillStyle = '#000'; g.fillRect(0, 0, w, h);
+  let stream;
+  try { stream = cv.captureStream(30); } catch (e) { toast('Este navegador no permite grabar vídeo'); return; }
+  const tracks = [...stream.getVideoTracks()];
+  if (recDest) tracks.push(...recDest.stream.getAudioTracks());
+  let rec;
+  try { rec = new MediaRecorder(new MediaStream(tracks), { mimeType: mime || undefined, videoBitsPerSecond: Math.min(12e6, Math.max(2e6, w * h * 4)) }); }
+  catch (e) { toast('No se pudo iniciar la grabación'); return; }
+  const chunks = [];
+  rec.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
+  modalStep('run');
+  if (speaker) speaker.gain.value = 0;
+  let resolveDone; const done = new Promise(r => resolveDone = r);
+  exp = { rec, g, w, h, cancelled: false, finish: () => resolveDone() };
+  S.t = 0; S.playing = true; updatePlayBtn();
+  const tok = ++playToken;
+  startClip(0, L0.in, tok);
+  requestAnimationFrame(loop);
+  await done;
+  const cancelled = exp.cancelled;
+  pause();
+  if (rec.state !== 'inactive'){ const st = waitEvent(rec, 'stop', 5000); try { rec.stop(); } catch (e) {} await st; }
+  stream.getTracks().forEach(t => t.stop());
+  exp = null;
+  if (speaker) speaker.gain.value = 1;
+  S.t = 0; afterEdit();
+  if (cancelled || !chunks.length){ $('#modal').classList.remove('show'); if (!cancelled) toast('No se grabó nada'); return; }
+  const type = rec.mimeType || mime || 'video/webm';
+  lastExt = /mp4/.test(type) ? 'mp4' : 'webm';
+  lastBlob = new Blob(chunks, { type });
+  const r = $('#result'); if (r.src) URL.revokeObjectURL(r.src); r.src = URL.createObjectURL(lastBlob);
+  $('#doneTxt').textContent = `${lastExt.toUpperCase()} · ${(lastBlob.size / 1048576).toFixed(1)} MB · ${fmt(total())}`;
+  modalStep('done'); $('#mShare').hidden = true;
+  saveFile();
+}
+function drawExport(){
+  const { g, w, h } = exp; g.fillStyle = '#000'; g.fillRect(0, 0, w, h);
+  const v = activeSrc && activeSrc.v; if (!v || !v.videoWidth) return;
+  const r = Math.min(w / v.videoWidth, h / v.videoHeight), dw = v.videoWidth * r, dh = v.videoHeight * r;
+  try { g.drawImage(v, (w - dw) / 2, (h - dh) / 2, dw, dh); } catch (e) {}
+}
+function updateProgress(){
+  const T = total(), p = T ? Math.min(1, S.t / T) : 0;
+  $('#prog').style.width = (p * 100).toFixed(1) + '%';
+  $('#progTxt').textContent = `${Math.round(p * 100)} % · faltan ${fmt(T - S.t)}`;
+}
+let dlPromise = null;
+function getDownloads(){
+  if (!dlPromise){ try { dlPromise = (window.claude && window.claude.use) ? window.claude.use('downloads') : null; } catch (e) { dlPromise = null; } }
+  return dlPromise ? dlPromise.catch(() => null) : Promise.resolve(null);
+}
+/* ---------- guardar archivos según dónde se ejecute ---------- */
+const Cap = window.Capacitor;
+const isNative = !!(Cap && Cap.isNativePlatform && Cap.isNativePlatform());
+const plugin = n => isNative ? ((Cap.Plugins && Cap.Plugins[n]) || (Cap.registerPlugin && Cap.registerPlugin(n))) : null;
+const stampNow = () => new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '');
+function blobToB64(blob){
+  return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1] || ''); r.onerror = () => rej(r.error); r.readAsDataURL(blob); });
+}
+async function nativeWrite(blob, path, directory, onProg){
+  const FS = plugin('Filesystem'), CH = 3 * 1024 * 1024; // múltiplo de 3 para que el base64 encaje
+  let o = 0;
+  do {
+    const data = await blobToB64(blob.slice(o, o + CH));
+    if (o === 0) await FS.writeFile({ path, directory, data, recursive: true });
+    else await FS.appendFile({ path, directory, data });
+    o += CH; if (onProg) onProg(Math.min(1, o / Math.max(1, blob.size)));
+  } while (o < blob.size);
+  return (await FS.getUri({ path, directory })).uri;
+}
+let lastNativeUri = null;
+async function nativeShare(blob, filename){
+  const uri = lastNativeUri && lastNativeUri.endsWith(filename) ? lastNativeUri : await nativeWrite(blob, filename, 'CACHE');
+  await plugin('Share').share({ title: filename, files: [uri] });
+}
+// devuelve { ok, declined, msg }
+async function saveBlob(blob, filename, onProg){
+  if (isNative){
+    try {
+      lastNativeUri = await nativeWrite(blob, 'Editor de video/' + filename, 'DOCUMENTS', onProg);
+      return { ok: true, msg: 'Guardado en Documentos › Editor de video' };
+    } catch (e) {
+      try { await nativeShare(blob, filename); return { ok: true, msg: '' }; }
+      catch (e2) { return /cancel/i.test(String(e2 && e2.message)) ? { declined: true } : { msg: 'No se pudo guardar el archivo' }; }
+    }
+  }
+  const dl = await getDownloads();
+  if (dl){
+    try { await dl.save({ filename, data: blob }); return { ok: true, msg: 'Guardado' }; }
+    catch (e) {
+      const c = e && e.code;
+      if (c === 'declined') return { declined: true };
+      if (c === 'rate_limited') return { msg: 'Espera un momento y vuelve a intentarlo' };
+      if (c === 'too_large') return { msg: 'Es demasiado grande; prueba con menos calidad' };
+      return { msg: 'No se pudo guardar el archivo' };
+    }
+  }
+  if (window.showSaveFilePicker && navigator.userActivation && navigator.userActivation.isActive){
+    try { const h = await window.showSaveFilePicker({ suggestedName: filename }); const w = await h.createWritable(); await w.write(blob); await w.close(); return { ok: true, msg: 'Guardado' }; }
+    catch (e) { if (e && e.name === 'AbortError') return { declined: true }; }
+  }
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 120000);
+  return { ok: true, msg: 'Descargado' };
+}
+let lastVideoName = '';
+async function saveFile(){
+  if (!lastBlob) return;
+  lastVideoName = `video-${stampNow()}.${lastExt}`;
+  const r = await saveBlob(lastBlob, lastVideoName, f => $('#doneTxt').dataset.p = f);
+  if (r.msg) toast(r.msg);
+  $('#mShare').hidden = !isNative;
+}
+
+/* ---------- proyecto: guardado automático (navegador) ---------- */
+let dbP = null, restoring = false, saveTimer = 0, lastSaved = null, autosaveOK = true;
+function getDb(){
+  if (!dbP) dbP = new Promise((res, rej) => {
+    try {
+      const rq = indexedDB.open('editor-video', 1);
+      rq.onupgradeneeded = () => { rq.result.createObjectStore('files'); rq.result.createObjectStore('meta'); };
+      rq.onsuccess = () => res(rq.result); rq.onerror = () => rej(rq.error);
+    } catch (e) { rej(e); }
+  });
+  return dbP;
+}
+async function idb(store, mode, fn){
+  const db = await getDb();
+  return new Promise((res, rej) => {
+    const tx = db.transaction(store, mode), os = tx.objectStore(store); let out;
+    const rq = fn(os); if (rq) rq.onsuccess = () => out = rq.result;
+    tx.oncomplete = () => res(out); tx.onerror = () => rej(tx.error); tx.onabort = () => rej(tx.error);
+  });
+}
+function projectMeta(){
+  const used = new Set([...S.clips, ...S.aclips].map(c => c.src));
+  const sources = [...S.sources.values()].filter(s => used.has(s.id)).map(s => ({ id: s.id, kind: s.kind, name: s.name, type: s.file ? s.file.type : '' }));
+  return { app: 'editor-video', version: 1, savedAt: Date.now(), sources, clips: S.clips, aclips: S.aclips, sel: S.sel, t: S.t, pps: S.pps };
+}
+function scheduleSave(){ if (restoring || !autosaveOK) return; clearTimeout(saveTimer); saveTimer = setTimeout(saveNow, 700); }
+async function saveNow(){
+  if (restoring) return;
+  try {
+    const meta = projectMeta();
+    for (const sm of meta.sources){
+      const s = S.sources.get(sm.id);
+      if (!s.stored && s.file){ await idb('files', 'readwrite', os => os.put(s.file, s.id)); s.stored = true; }
+    }
+    await idb('meta', 'readwrite', os => os.put(meta, 'current'));
+    // borrar del navegador los archivos que ya no se usan
+    const keep = new Set(meta.sources.map(x => x.id));
+    const keys = await idb('files', 'readonly', os => os.getAllKeys());
+    for (const k of keys || []) if (!keep.has(k)){ await idb('files', 'readwrite', os => os.delete(k)); const s = S.sources.get(k); if (s) s.stored = false; }
+    lastSaved = new Date(); updatePStatus();
+  } catch (e) {
+    autosaveOK = false; updatePStatus();
+    toast('No hay espacio para guardar en el navegador: usa Proyecto → Descargar');
+  }
+}
+function updatePStatus(){
+  const el = $('#pStatus');
+  if (!autosaveOK) el.textContent = 'El guardado automático no está disponible aquí. Descarga el proyecto para no perderlo.';
+  else el.textContent = 'Se guarda solo en este navegador mientras editas' + (lastSaved ? ` · último guardado ${lastSaved.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}` : '') +
+    '. Si borras los datos del navegador o cambias de dispositivo, se pierde: para eso, descárgalo.';
+}
+function clearProject(){
+  pause();
+  S.sources.forEach(s => { if (s.v) s.v.remove(); try { URL.revokeObjectURL(s.url); } catch (e) {} });
+  aEls.forEach(a => { a.el.pause(); a.el.removeAttribute('src'); });
+  S.sources.clear(); aEls.clear(); activeSrc = null;
+  S.clips = []; S.aclips = []; S.sel = null; S.t = 0; undoStack.length = 0;
+}
+async function restoreProject(meta, getFile){
+  restoring = true; clearProject(); updateButtons();
+  let maxId = 0; const num = x => { const n = parseInt(String(x).replace(/\D/g, ''), 10); if (n > maxId) maxId = n; };
+  for (const sm of meta.sources || []){
+    num(sm.id);
+    try {
+      const blob = await getFile(sm); if (!blob) continue;
+      const file = blob instanceof File ? blob : new File([blob], sm.name, { type: sm.type || blob.type || '' });
+      const src = sm.kind === 'audio' ? await loadAudioSource(file, sm.id) : await loadVideoSource(file, sm.id);
+      makeWave(src, file, false);
+    } catch (e) {}
+  }
+  const ok = c => S.sources.has(c.src);
+  S.clips = (meta.clips || []).filter(ok); S.aclips = (meta.aclips || []).filter(ok);
+  [...S.clips, ...S.aclips].forEach(c => num(c.id));
+  uid = Math.max(uid, maxId + 1);
+  S.sel = meta.sel; S.pps = meta.pps || 40; S.t = meta.t || 0;
+  restoring = false;
+  afterEdit();
+  return S.clips.length + S.aclips.length;
+}
+async function autoRestore(){
+  try {
+    const meta = await idb('meta', 'readonly', os => os.get('current'));
+    if (!meta || !((meta.clips || []).length || (meta.aclips || []).length)) return;
+    toast('Recuperando tu proyecto…');
+    const n = await restoreProject(meta, sm => idb('files', 'readonly', os => os.get(sm.id)));
+    S.sources.forEach(s => s.stored = true);
+    lastSaved = new Date(meta.savedAt || Date.now()); updatePStatus();
+    if (n) toast('Proyecto recuperado'); else toast('No se pudieron recuperar los vídeos del proyecto');
+  } catch (e) { restoring = false; }
+}
+
+/* ---------- proyecto: archivo .zip ---------- */
+const CRC_T = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++){ let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+async function crc32(blob, onProg){
+  let c = 0xFFFFFFFF; const CH = 8 << 20;
+  for (let o = 0; o < blob.size; o += CH){
+    const a = new Uint8Array(await blob.slice(o, o + CH).arrayBuffer());
+    for (let i = 0; i < a.length; i++) c = CRC_T[(c ^ a[i]) & 255] ^ (c >>> 8);
+    if (onProg) onProg(Math.min(blob.size, o + CH));
+  }
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+async function makeZip(entries, onProg){ // entries: [{name, blob}] — sin comprimir (los vídeos ya vienen comprimidos)
+  const enc = new TextEncoder(), parts = [], central = []; let offset = 0;
+  const d = new Date(), dosTime = (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1),
+        dosDate = ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate();
+  const totalBytes = entries.reduce((a, e) => a + e.blob.size, 0); let done = 0;
+  for (const e of entries){
+    const name = enc.encode(e.name), size = e.blob.size;
+    const crc = await crc32(e.blob, b => onProg && onProg((done + b) / totalBytes));
+    done += size;
+    const lh = new DataView(new ArrayBuffer(30));
+    lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(6, 0x0800, true); lh.setUint16(8, 0, true);
+    lh.setUint16(10, dosTime, true); lh.setUint16(12, dosDate, true); lh.setUint32(14, crc, true);
+    lh.setUint32(18, size, true); lh.setUint32(22, size, true); lh.setUint16(26, name.length, true); lh.setUint16(28, 0, true);
+    parts.push(lh.buffer, name, e.blob);
+    const ch = new DataView(new ArrayBuffer(46));
+    ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true); ch.setUint16(8, 0x0800, true); ch.setUint16(10, 0, true);
+    ch.setUint16(12, dosTime, true); ch.setUint16(14, dosDate, true); ch.setUint32(16, crc, true);
+    ch.setUint32(20, size, true); ch.setUint32(24, size, true); ch.setUint16(28, name.length, true);
+    ch.setUint32(42, offset, true);
+    central.push(ch.buffer, name);
+    offset += 30 + name.length + size;
+  }
+  const cdSize = central.reduce((a, b) => a + b.byteLength, 0);
+  const eo = new DataView(new ArrayBuffer(22));
+  eo.setUint32(0, 0x06054b50, true); eo.setUint16(8, entries.length, true); eo.setUint16(10, entries.length, true);
+  eo.setUint32(12, cdSize, true); eo.setUint32(16, offset, true);
+  return new Blob([...parts, ...central, eo.buffer], { type: 'application/zip' });
+}
+async function readZip(blob){ // devuelve Map nombre -> Blob
+  const tailLen = Math.min(blob.size, 65557), tail = new DataView(await blob.slice(blob.size - tailLen).arrayBuffer());
+  let e = -1; for (let i = tailLen - 22; i >= 0; i--) if (tail.getUint32(i, true) === 0x06054b50){ e = i; break; }
+  if (e < 0) throw new Error('nozip');
+  const n = tail.getUint16(e + 10, true), cdSize = tail.getUint32(e + 12, true), cdOff = tail.getUint32(e + 16, true);
+  const cd = new DataView(await blob.slice(cdOff, cdOff + cdSize).arrayBuffer());
+  const dec = new TextDecoder(), out = new Map(); let p = 0;
+  for (let k = 0; k < n; k++){
+    if (cd.getUint32(p, true) !== 0x02014b50) break;
+    const method = cd.getUint16(p + 10, true), csize = cd.getUint32(p + 20, true);
+    const nl = cd.getUint16(p + 28, true), xl = cd.getUint16(p + 30, true), cl = cd.getUint16(p + 32, true), lho = cd.getUint32(p + 42, true);
+    const name = dec.decode(new Uint8Array(cd.buffer, p + 46, nl)); p += 46 + nl + xl + cl;
+    const lh = new DataView(await blob.slice(lho, lho + 30).arrayBuffer());
+    const start = lho + 30 + lh.getUint16(26, true) + lh.getUint16(28, true);
+    let data = blob.slice(start, start + csize);
+    if (method === 8){
+      if (!window.DecompressionStream) continue;
+      data = await new Response(data.stream().pipeThrough(new DecompressionStream('deflate-raw'))).blob();
+    } else if (method !== 0) continue;
+    out.set(name, data);
+  }
+  return out;
+}
+let pBusy = false;
+async function downloadProject(){
+  if (pBusy) return;
+  const meta = projectMeta();
+  if (!meta.sources.length){ toast('El proyecto está vacío'); return; }
+  pBusy = true; pause();
+  try {
+    const entries = [{ name: 'proyecto.json', blob: new Blob([JSON.stringify(meta)], { type: 'application/json' }) }];
+    for (const sm of meta.sources){ const s = S.sources.get(sm.id); sm.path = `media/${sm.id}_${sm.name.replace(/[\\/:*?"<>|]/g, '_')}`; entries.push({ name: sm.path, blob: s.file }); }
+    entries[0].blob = new Blob([JSON.stringify(meta)], { type: 'application/json' });
+    if (entries.reduce((a, x) => a + x.blob.size, 0) > 4e9){ toast('El proyecto pasa de 4 GB y no cabe en un .zip normal'); return; }
+    const zip = await makeZip(entries, f => $('#pProg').textContent = `Preparando el archivo… ${Math.round(f * 100)} %`);
+    $('#pProg').textContent = '';
+    const r = await saveBlob(zip, `proyecto-video-${stampNow()}.zip`, f => $('#pProg').textContent = `Guardando… ${Math.round(f * 100)} %`);
+    if (r.msg) toast(r.msg === 'Guardado' || r.msg === 'Descargado' ? 'Proyecto descargado' : r.msg);
+  } catch (e) { toast('No se pudo preparar el proyecto'); }
+  finally { pBusy = false; $('#pProg').textContent = ''; }
+}
+async function openProjectFile(file){
+  pBusy = true; $('#pProg').textContent = 'Abriendo el proyecto…';
+  try {
+    const files = await readZip(file), j = files.get('proyecto.json');
+    if (!j) throw new Error('nojson');
+    const meta = JSON.parse(await j.text());
+    if (meta.app !== 'editor-video') throw new Error('notours');
+    autosaveOK = true;
+    S.sources.forEach(s => s.stored = false);
+    const n = await restoreProject(meta, async sm => files.get(sm.path) || null);
+    $('#pmodal').classList.remove('show');
+    toast(n ? 'Proyecto abierto' : 'El proyecto no tenía vídeos que se pudieran abrir');
+  } catch (e) { toast('Ese archivo no es un proyecto de este editor'); }
+  finally { pBusy = false; $('#pProg').textContent = ''; }
+}
+let newArmed = 0;
+async function newProject(){
+  if (Date.now() - newArmed > 4000){ newArmed = Date.now(); $('#pNew').querySelector('b').textContent = '¿Seguro? Toca otra vez para vaciarlo'; setTimeout(() => $('#pNew').querySelector('b').textContent = 'Nuevo proyecto', 4000); return; }
+  newArmed = 0; $('#pNew').querySelector('b').textContent = 'Nuevo proyecto';
+  clearProject();
+  try { await idb('meta', 'readwrite', os => os.clear()); await idb('files', 'readwrite', os => os.clear()); } catch (e) {}
+  lastSaved = null; afterEdit(); updatePStatus();
+  $('#pmodal').classList.remove('show'); toast('Proyecto nuevo');
+}
+
+/* ---------- eventos ---------- */
+const pick = () => $('#file').click();
+$('#addBtn').onclick = pick; $('#addBtn2').onclick = pick;
+$('#file').onchange = e => { const f = e.target.files; if (f && f.length) addFiles(f); e.target.value = ''; };
+$('#playBtn').onclick = () => S.playing ? pause() : play();
+$('#startBtn').onclick = () => { pause(); S.t = 0; updatePlayhead(); showFrame(0); };
+$('#splitBtn').onclick = split;
+$('#delBtn').onclick = delClip;
+$('#leftBtn').onclick = () => moveClip(-1);
+$('#rightBtn').onclick = () => moveClip(1);
+$('#dupBtn').onclick = dupClip;
+$('#toCursor').onclick = toCursor;
+$('#linkBtn').onclick = toggleLink;
+$('#undoBtn').onclick = undo;
+$('#zoomIn').onclick = () => zoom(1.5);
+$('#zoomOut').onclick = () => zoom(1/1.5);
+$('#expBtn').onclick = openExport;
+$('#projBtn').onclick = () => { pause(); updatePStatus(); $('#pmodal').classList.add('show'); };
+$('#pClose').onclick = () => { if (!pBusy) $('#pmodal').classList.remove('show'); };
+$('#pDownload').onclick = downloadProject;
+$('#pOpen').onclick = () => { if (!pBusy) $('#pfile').click(); };
+$('#pfile').onchange = e => { const f = e.target.files && e.target.files[0]; e.target.value = ''; if (f) openProjectFile(f); };
+$('#pNew').onclick = newProject;
+$('#mCancel').onclick = closeModal;
+$('#mGo').onclick = () => { if (!$('#mDone').hidden) saveFile(); else runExport(); };
+window.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || $('#modal').classList.contains('show') || $('#pmodal').classList.contains('show')) return;
+  if (e.code === 'Space'){ e.preventDefault(); S.playing ? pause() : play(); }
+  else if (e.key === 's' || e.key === 'S') split();
+  else if (e.key === 'Delete' || e.key === 'Backspace') delClip();
+  else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z'){ e.preventDefault(); undo(); }
+  else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight'){ e.preventDefault(); pause();
+    S.t = Math.max(0, Math.min(Math.max(total(), audioEnd()), S.t + (e.key === 'ArrowLeft' ? -1 : 1) * (e.shiftKey ? 1 : 1/30)));
+    updatePlayhead(); showFrame(Math.min(S.t, total())); }
+});
+let dragDepth = 0;
+window.addEventListener('dragenter', e => { e.preventDefault(); dragDepth++; $('#drop').classList.add('show'); });
+window.addEventListener('dragleave', () => { if (--dragDepth <= 0){ dragDepth = 0; $('#drop').classList.remove('show'); } });
+window.addEventListener('dragover', e => e.preventDefault());
+window.addEventListener('drop', e => { e.preventDefault(); dragDepth = 0; $('#drop').classList.remove('show'); if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files); });
+window.addEventListener('resize', () => { renderClips(); updatePlayhead(); });
+document.addEventListener('visibilitychange', () => { if (document.hidden && exp) toast('Vuelve a esta pantalla: la grabación se pausa si sales'); });
+
+updatePlayBtn(); renderClips(); updatePlayhead(); updateButtons();
+setTimeout(getDownloads, 0);
+try { navigator.storage && navigator.storage.persist && navigator.storage.persist().catch(() => {}); } catch (e) {}
+autoRestore();
+
+/* ---------- versión, actualizaciones e instalación ---------- */
+const REPO = 'phoSk/Video-Editor';
+(async () => {
+  let ver = null;
+  try { ver = await (await fetch('version.json', { cache: 'no-store' })).json(); } catch (e) {}
+  if (isNative && ver && ver.build && !REPO.startsWith('__')){
+    try {
+      const rel = await (await fetch(`https://api.github.com/repos/${REPO}/releases/latest`)).json();
+      const latest = parseInt(String(rel.tag_name || '').replace(/\D/g, ''), 10);
+      const apk = (rel.assets || []).find(a => /\.apk$/.test(a.name));
+      if (latest > ver.build && apk){
+        $('#updTxt').textContent = 'Hay una versión nueva de la app.';
+        $('#updLink').href = apk.browser_download_url; $('#updBar').classList.add('show');
+      }
+    } catch (e) {}
+  }
+})();
+$('#updClose').onclick = () => $('#updBar').classList.remove('show');
+if (!isNative && 'serviceWorker' in navigator && location.protocol === 'https:'){
+  try { navigator.serviceWorker.register('sw.js').catch(() => {}); } catch (e) {}
+}
+})();
+</script>
+</body>
+</html>
