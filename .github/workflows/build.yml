@@ -47,50 +47,11 @@ jobs:
           java-version: 21
       - uses: android-actions/setup-android@v3
 
-      - name: Instalar dependencias
-        run: npm ci
-
-      - name: Crear proyecto Android
-        shell: bash
-        run: |
-          set -eo pipefail
-          trap 'tail -25 "$RUNNER_TEMP/cap.log" | sed "s/^/::error::/"' ERR
-          exec > >(tee "$RUNNER_TEMP/cap.log") 2>&1
-          npx cap add android
-          npx --yes @capacitor/assets@3 generate --android \
-            --iconBackgroundColor '#2d4796' --iconBackgroundColorDark '#2d4796' \
-            --splashBackgroundColor '#0e1014' --splashBackgroundColorDark '#0e1014'
-          npx cap sync android
-
-      - name: Preparar firma
-        env:
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-        run: |
-          if [ -z "$KEYSTORE_PASSWORD" ]; then
-            echo "::error::Falta el secreto KEYSTORE_PASSWORD (Settings > Secrets and variables > Actions)."
-            exit 1
-          fi
-          echo "KEYSTORE_PATH=$GITHUB_WORKSPACE/android-release.keystore" >> "$GITHUB_ENV"
-
-      - name: Ajustar versión y firma
-        env:
-          BUILD_NUMBER: ${{ github.run_number }}
-        run: node scripts/patch-android.mjs
-
       - name: Compilar APK
         env:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_ALIAS: editorvideo
-        run: |
-          cd android
-          chmod +x gradlew
-          if ! ./gradlew assembleRelease --no-daemon > "$RUNNER_TEMP/gradle.log" 2>&1; then
-            grep -E "What went wrong|error:|e: |FAILURE|Could not|> " -A3 "$RUNNER_TEMP/gradle.log" | head -40 | sed "s/^/::error::/"
-            tail -15 "$RUNNER_TEMP/gradle.log" | sed "s/^/::error::/"
-            exit 1
-          fi
-          cp app/build/outputs/apk/release/app-release.apk ../editor-video.apk
+          BUILD_NUMBER: ${{ github.run_number }}
+        run: bash scripts/build-android.sh
 
       - uses: actions/upload-artifact@v5
         with:
@@ -104,4 +65,8 @@ jobs:
           gh release create "v${{ github.run_number }}" editor-video.apk \
             --title "Versión 1.0.${{ github.run_number }}" \
             --notes "Descarga editor-video.apk en tu móvil Android e instálala." \
-            --latest
+            --latest || { echo "::error::No se pudo crear la versión en Releases"; exit 1; }
+
+      - name: Aviso de fallo
+        if: failure()
+        run: echo "::error::Ha fallado un paso de preparación o de publicación del trabajo de Android"
